@@ -3,12 +3,15 @@ from environments import WirelessChannelEnv
 from experiment import Experiment
 
 
-
-channels = [1, 6, 11, 36, 40, 44, 149, 153, 157]
-agent = EpsilonGreedy(n_arms=len(channels), epsilon=0.1,update_rule= "exponential_smoothing", alpha=0.3)
-env = WirelessChannelEnv(channels)
-
+source_ip ="192.168.2.10"
+dest_ip = "192.168.2.20"
+channels = [1, 2, 3, 36, 40, 44, 48, 149, 165] # wihout 3 and 13
+agent = EpsilonGreedy(n_arms=len(channels), epsilon=0.25,update_rule= "exponential_smoothing", alpha = 0.7)
+env = WirelessChannelEnv(source_ip,dest_ip,channels,"http://localhost:8000/network/data-transfer-rate")
 
 exp = Experiment(agent, env)
-exp.run(1000)
+exp.run(200)
 exp.plot()
+
+
+
