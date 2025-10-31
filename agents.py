@@ -23,12 +23,15 @@ class EpsilonGreedy:
         n = self.counts[chosen_arm]
         value = self.values[chosen_arm]
 
+
+
         if self.update_rule == "incremental":
 
             # This is the incremental update rule of shutton and burton book
             # they prove this and the general form is 
             # NewEstimate = OldEstimate + StepSize[Target-OldEstimate]
             # step size denoted by at(a), a = 1/k (in a more informal way)
+            
             self.values[chosen_arm] = value + (reward - value) / n
 
         elif self.update_rule == "exponential_smoothing":
