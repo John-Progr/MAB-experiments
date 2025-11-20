@@ -22,6 +22,8 @@ class Experiment:
             # halfway checkpoint
             if i + 1 == n_trials // 2:
                 print("\n📊 Halfway through — generating mid-run plot...\n")
+                print("\n We are on the iteration: ", i)
+                
                 self.plot_half()  # show the first-half plot
 
     def plot(self):
@@ -59,9 +61,9 @@ class Experiment:
         if len(self.rewards) == 0:
             raise ValueError("No data to plot. Run experiment.run(n_trials) first.")
 
-        half = len(self.rewards) // 2
-        half_rewards = self.rewards[:half]
-        half_actions = self.actions[:half]
+       
+        half_rewards = self.rewards
+        half_actions = self.actions
 
         steps = np.arange(1, len(half_rewards) + 1)
         avg_reward = np.cumsum(half_rewards) / steps  # cumulative average reward
