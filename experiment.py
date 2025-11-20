@@ -23,8 +23,9 @@ class Experiment:
             if i + 1 == n_trials // 2:
                 print("\n📊 Halfway through — generating mid-run plot...\n")
                 print("\n We are on the iteration: ", i)
-                
-                self.plot_half()  # show the first-half plot
+                self.plot()
+                #self.plot_half()
+                self.plot_avg_reward_per_arm_over_time()  # show the first-half plot
 
     def plot(self):
         if len(self.rewards) == 0:
@@ -89,5 +90,44 @@ class Experiment:
         axs[1].set_ylabel("Average Reward")
         axs[1].grid(True, linestyle='--', alpha=0.5)
 
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.show()
+  # ---------------------------------------------------------
+    # ⭐ NEW FUNCTION: line plots for each arm over the full run
+    # ---------------------------------------------------------
+    def plot_avg_reward_per_arm_over_time(self):
+        if len(self.rewards) == 0:
+            raise ValueError("No data to plot. Run experiment.run(n_trials) first.")
+
+        arms = list(dict.fromkeys(self.actions))  # unique arm labels
+        n_arms = len(arms)
+
+        fig, axs = plt.subplots(n_arms, 1, figsize=(10, 4 * n_arms), sharex=True)
+        fig.suptitle("Average Reward per Arm Over Time", fontsize=16)
+
+        # If there is only one arm, axs is not a list → convert it
+        if n_arms == 1:
+            axs = [axs]
+
+        for idx, arm in enumerate(arms):
+            cumulative_sum = 0
+            count = 0
+            arm_avg_rewards = []
+            steps = []
+
+            # Build the arm-specific average reward over time
+            for t, (a, r) in enumerate(zip(self.actions, self.rewards), start=1):
+                if a == arm:
+                    count += 1
+                    cumulative_sum += r
+                    arm_avg_rewards.append(cumulative_sum / count)
+                    steps.append(t)
+
+            axs[idx].plot(steps, arm_avg_rewards, linewidth=2)
+            axs[idx].set_title(f"Arm {arm}")
+            axs[idx].set_ylabel("Avg Reward")
+            axs[idx].grid(True, linestyle='--', alpha=0.5)
+
+        axs[-1].set_xlabel("Step (Iteration)")
         plt.tight_layout(rect=[0, 0, 1, 0.96])
         plt.show()
