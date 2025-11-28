@@ -4,7 +4,7 @@ import time
 
 class WirelessChannelEnv:
 
-    def __init__(self, source_ip, dest_ip, channels, reward_endpoint=None,):
+    def __init__(self, source_ip, dest_ip, channels, reward_machine, reward_url):
 
         """
         Request to a testbed as a service environment to get throughput (our reward)
@@ -19,7 +19,17 @@ class WirelessChannelEnv:
         self.source_ip = source_ip
         self.dest_ip = dest_ip
         self.channels = channels
-        self.reward_endpoint = reward_endpoint
+        #self.reward_endpoint = reward_endpoint
+        self.reward_machine = reward_machine
+        self.reward_url = reward_url  # store the private URL
+
+        if self.reward_machine == 3 and self.reward_url:
+            try:
+                df = pd.read_csv(self.reward_url, header=None)  # ⬅️ NO HEADER
+                # assuming reward is in column index 2
+                self.reward_iter = iter(df[2].tolist())
+            except Exception as e:
+                raise RuntimeError(f"Failed to load reward data: {e}")
        
 
     def send_request(self, channel):
@@ -64,15 +74,24 @@ class WirelessChannelEnv:
         Fetch reward for a given channel, either via API or simulation
 
         """
-        if self.reward_endpoint:
+        if self.reward_machine == 0:
              json_response = self.send_request(channel)
              print(json_response)
              reward = json_response["rate_mbps"]
 
              return reward
-        else:
+        elif self.reward_machine == 1:
+            return np.clip(np.random.rayleigh(scale=5.0) + 5, 5, 40)
 
-                
-            return np.random.normal(loc=channel*2, scale=3.0)
+        elif self.reward_machine == 2:
+            return np.clip( np.random.normal(loc=22.5, scale=5), 5, 40)
+        
+        elif self.reward_machine == 3:
+            try:
+                return next(self.reward_iter)
+            except StopIteration:
+                raise RuntimeError("No more rewards available in CSV")
+
+
 
 
