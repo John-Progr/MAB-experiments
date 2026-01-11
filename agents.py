@@ -10,8 +10,19 @@ class EpsilonGreedy:
         self.update_rule = update_rule
         self.alpha = alpha
         self.counts = np.zeros(n_arms)   # Number of times each arm is pulled, basically how often each channel is used 
-        self.values = np.zeros(n_arms)   # Estimated values of each arm, basically estimated throughput per channel
-        np.random.seed(30)  # fixed seed
+        self.values = np.full(n_arms, 1000)
+        #self.values = np.zeros(n_arms) # Estimated values of each arm, basically estimated throughput per channel
+        np.random.seed(46)  # fixed seed
+
+
+
+
+
+    def get_estimated_values(self):
+        """
+        Returns the current estimated action values (Q-values) for all arms.
+        """
+        return self.values
 
 
     def select_arm(self):
@@ -26,6 +37,10 @@ class EpsilonGreedy:
         self.counts[chosen_arm] += 1
         n = self.counts[chosen_arm]
         value = self.values[chosen_arm]
+        print(f"chosen_arm = {chosen_arm}")
+        print(f"n = {n}")
+        print(f"value = {value}")
+
 
 
 
@@ -40,6 +55,9 @@ class EpsilonGreedy:
 
         elif self.update_rule == "exponential_smoothing":
             self.values[chosen_arm] = value + self.alpha *(reward-value)
+            something = self.values[chosen_arm]
+            print(f"value after update = {something}")
+ 
 
         else:
             raise ValueError("update_rule must be 'incremental' or 'exponential_smoothing'")

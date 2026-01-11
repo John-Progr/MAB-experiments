@@ -4,11 +4,18 @@ from logging_utils import save_to_csv
 from datetime import datetime
 import time
 
+
+
+
+# make the code correct with the correct classes and the correct names for the experiments plots  
+
+
 class Experiment:
 
-    def __init__(self, agent, env):
+    def __init__(self, agent, env, exptype):
         self.agent = agent
         self.env = env
+        self.exptype = exptype
         self.rewards = []
         self.actions = []
 
@@ -26,28 +33,46 @@ class Experiment:
 
     def run(self, n_trials):
         for i in range(n_trials):
+
+            
             print(f"Entering trial number: {i + 1}")
-            arm = self.agent.select_arm()
-            channel = self.env.channels[arm]
-            print(f"DEBUG - selected arm index: {arm}, channel value: {channel}")  # Add this too
-            time.sleep(2)
-            reward = self.env.get_reward(channel)
-            self.agent.update(arm, reward)
+            if self.exptype == 'optimal_channel':
+                 arm = self.agent.select_arm()
+                 channel = self.env.channels[arm]
+                 print(f"DEBUG - selected arm index: {arm}, channel value: {channel}")  # Add this too
+                 time.sleep(10)
+                 reward = self.env.get_reward(channel)
+                 self.agent.update(arm, reward)
+                 self.actions.append(channel)
+                 self.rewards.append(reward)
+                 row = [{
+                    "Iteration": i,
+                    "Channel": channel,
+                    "Reward": reward,
+                    "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                 }]
+            elif self.exptype == 'optimal_route':
+                arm = self.agent.select_arm()
+                device = self.env.devices[arm]
+                print(f"DEBUG - selected arm index: {arm}, device ip value: {device}")
+                time.sleep(10)
+                reward = self.env.get_reward(device)
+                self.agent.update(arm, reward)
+                self.actions.append(device)
+                self.rewards.append(reward)
+                row = [{
+                    "Iteration": i,
+                    "Device": device,
+                    "Reward": reward,
+                    "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                 }]
 
-            self.actions.append(channel)
-            self.rewards.append(reward)
-            row = [{
-                "Iteration": i,
-                "Channel": channel,
-                "Reward": reward,
-                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }]
-            save_to_csv(row) # we save each iteration as a row of a data bank so we can replay the experiment again if we desire
 
-
-            self.update_live_main_plot()
+            #save_to_csv(row) # we save each iteration as a row of a data bank so we can replay the experiment again if we desire
+            self.update_live_main_plot(i)
             self.update_live_arm_plots()
-
+            
+        
             # halfway checkpoint
             """
             if i + 1 == n_trials // 2:
@@ -58,6 +83,16 @@ class Experiment:
             """
 
     def plot(self):
+
+        # --- LABELS BASED ON EXPERIMENT TYPE ---
+        if self.exptype == 'optimal_route':
+            entity_singular = "Route"
+            entity_plural = "Routes"
+            main_title = "Epsilon-Greedy Optimal Route Selection: Final Results"
+        else:
+            entity_singular = "Channel"
+            entity_plural = "Channels"
+            main_title = "Epsilon-Greedy Wireless Channel Selection: Final Results"
         # 1. Apply a modern style
         plt.style.use('ggplot')
         
@@ -69,8 +104,8 @@ class Experiment:
 
         # 2. Increase figure size for better clarity
         fig, axs = plt.subplots(2, 1, figsize=(12, 10))
-        fig.suptitle("Epsilon-Greedy Wireless Channel Selection: Final Results", 
-                     fontsize=18, fontweight='bold', color='#444444')
+        fig.suptitle(main_title,
+             fontsize=18, fontweight='bold', color='#444444')
 
         # --- Subplot 1: Cumulative Average Reward ---
         axs[0].plot(steps, avg_reward, color='#E69F00', linewidth=3) # Use a distinctive color and thicker line
@@ -101,8 +136,11 @@ class Experiment:
         sorted_channels = [str(d[1]) for d in sorted_data]
 
         bars = axs[1].bar(sorted_channels, sorted_rewards, color='#56B4E9') # Use a complementary color
-        axs[1].set_title("Average Reward per Channel (Arm)", loc='left', fontsize=14, fontweight='bold')
-        axs[1].set_xlabel("Channel (Arm)", fontsize=12)
+        axs[1].set_title(
+            f"Average Reward per {entity_singular} (Arm)",
+            loc='left', fontsize=14, fontweight='bold'
+        )
+        axs[1].set_xlabel(f"{entity_singular} (Arm)", fontsize=12)
         axs[1].set_ylabel("Average Reward", fontsize=12)
         axs[1].grid(axis='y', linestyle='-', alpha=0.4)
         
@@ -159,7 +197,7 @@ class Experiment:
                 if a == arm:
                     count += 1
                     cumulative_sum += r
-                    arm_avg_rewards.append(cumulative_sum / count)
+                    arm_avg_rewards.append(self.rewards)  # cumulative_sum / count
                     steps.append(t)
 
             ax = axs[idx]
@@ -196,20 +234,60 @@ class Experiment:
         # Restore default style
         plt.style.use('default')
     
-    def update_live_main_plot(self):
+    def update_live_main_plot(self, iteration):
+        # --- LABELS BASED ON EXPERIMENT TYPE ---
+        if self.exptype == 'optimal_route':
+            entity_singular = "Route"
+            entity_plural = "Routes"
+            main_title = "Live Optimal Route Selection"
+        else:
+            entity_singular = "Channel"
+            entity_plural = "Channels"
+            main_title = "Live Channel Performance"
         # 1. Apply a modern style
         plt.style.use('ggplot')
         plt.ion()
 
         # Get all channels from environment (needed for consistent bar colors)
-        all_arms = self.env.channels
+        all_arms = self.env.devices#all_arms = self.env.channels
         colors = plt.cm.get_cmap('Dark2', len(all_arms))
+
+        # --- GET ESTIMATED Q-VALUES FOR DYNAMIC SUBTITLE ---
+        # Call the getter method to retrieve the current estimated values (Q-values)
+        current_q_values = self.agent.get_estimated_values()
+        
+        # Find the index (channel number) of the maximum Q-value
+        # Use np.argmax to find the index of the best channel
+        best_device_index = np.argmax(current_q_values)#best_channel_index = np.argmax(current_q_values)
+        best_value = current_q_values[best_device_index]#best_value = current_q_values[best_channel_index]
+        # Assuming channel names are what's in all_arms, which corresponds to the index
+        # Note: If all_arms is a list of channel identifiers, use all_arms[best_channel_index]
+        best_device_name = all_arms[best_device_index]#best_channel_name = all_arms[best_channel_index]
+        
+        # Create the dynamic text string
+        dynamic_subtitle = f""
+        # --------------------------------------------------
         
         if self.live_fig is None:
             # Increase figure size for better visual separation
             self.live_fig, (self.ax_avg, self.ax_bar) = plt.subplots(2, 1, figsize=(12, 9))
-            self.live_fig.suptitle("Live Channel Performance", 
-                                   fontsize=18, fontweight='bold', color='#444444')
+            self.live_fig.suptitle(main_title,
+                       fontsize=18, fontweight='bold', color='#444444')
+            # --- INITIAL SUBTITLE PLACEMENT (Placeholder) ---
+            # Initialize the dynamic text object; we will update its content later
+            # We store the reference to update it efficiently
+            self.best_channel_text = self.live_fig.text(x=0.5, 
+                                                        y=0.93, # Positioning the subtitle
+                                                        s=dynamic_subtitle, 
+                                                        fontsize=12, 
+                                                        color='#008000', # Use a bold color like green
+                                                        fontweight='semibold',
+                                                        ha='center')
+        else:
+            # --- UPDATE SUBTITLE ---
+            # If the figure already exists, just update the text object's content
+            # self.best_channel_text.set_text(dynamic_subtitle)
+            print("kwlos")
 
         steps = np.arange(1, len(self.rewards)+ 1)
         avg_reward = np.cumsum(self.rewards) / steps
@@ -277,8 +355,11 @@ class Experiment:
                              ha='center', va='bottom', fontsize=10)
 
 
-        self.ax_bar.set_title("Average Reward per Channel (Current)", loc='left', fontsize=14, fontweight='bold')
-        self.ax_bar.set_xlabel("Channel", fontsize=12)
+        self.ax_bar.set_title(
+            f"Average Reward per {entity_singular} (Current)",
+            loc='left', fontsize=14, fontweight='bold', pad=20
+        )
+        self.ax_bar.set_xlabel(entity_singular, fontsize=12)
         self.ax_bar.set_ylabel("Avg Reward", fontsize=12)
         self.ax_bar.grid(axis='y', linestyle='-', alpha=0.4)
 
@@ -286,20 +367,29 @@ class Experiment:
         self.ax_bar.spines['right'].set_visible(False)
         self.ax_bar.spines['top'].set_visible(False)
 
-        
+        # update subtitle FIRST
         self.live_fig.tight_layout(rect=[0, 0, 1, 0.96])
         self.live_fig.canvas.draw()
         self.live_fig.canvas.flush_events()
-        
+
+        if iteration == 0:
+            self.best_channel_text.set_text(f"Best Estimated {entity_singular}: None")
+        else:
+            self.best_channel_text.set_text(dynamic_subtitle)
+
+        # One more lightweight draw to update just the subtitle
+        self.live_fig.canvas.draw_idle()
         # Restore default style
         plt.style.use('default')
+
+       
     def update_live_arm_plots(self):
         # 1. Apply a modern style
         plt.style.use('ggplot') # Use a clean, stylish theme for better aesthetics
         plt.ion()
 
         # Get all channels from environment
-        all_arms = self.env.channels
+        all_arms = self.env.devices#all_arms = self.env.channels
         
         # Create the figure once with all arms
         if self.arm_fig is None:
