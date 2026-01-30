@@ -3,11 +3,13 @@ import matplotlib.pyplot as plt
 from logging_utils import save_to_csv
 from datetime import datetime
 import time
+from ExperimentLogger import ExperimentLogger
 
 
 
 
-# make the code correct with the correct classes and the correct names for the experiments plots  
+
+# make the code correct with the correct classes and the correct names for the experiments plots in a next iteration
 
 
 class Experiment:
@@ -18,6 +20,11 @@ class Experiment:
         self.exptype = exptype
         self.rewards = []
         self.actions = []
+
+        self.logger = ExperimentLogger(
+            experiment_name=f"{exptype}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
+
 
 
 
@@ -40,7 +47,6 @@ class Experiment:
                  arm = self.agent.select_arm()
                  channel = self.env.channels[arm]
                  print(f"DEBUG - selected arm index: {arm}, channel value: {channel}")  # Add this too
-                 time.sleep(10)
                  reward = self.env.get_reward(channel)
                  self.agent.update(arm, reward)
                  self.actions.append(channel)
@@ -52,10 +58,12 @@ class Experiment:
                     "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                  }]
             elif self.exptype == 'optimal_route':
-                arm = self.agent.select_arm()
+                arm = self.agent.select_arm() 
+                print(arm)
                 device = self.env.devices[arm]
+                print(device)
                 print(f"DEBUG - selected arm index: {arm}, device ip value: {device}")
-                time.sleep(10)
+                #time.sleep(1)
                 reward = self.env.get_reward(device)
                 self.agent.update(arm, reward)
                 self.actions.append(device)
@@ -69,8 +77,24 @@ class Experiment:
 
 
             #save_to_csv(row) # we save each iteration as a row of a data bank so we can replay the experiment again if we desire
+            q_values = self.agent.get_estimated_values()
+
+            self.logger.log_step(
+                    iteration=i,
+                    arm_index=arm,
+                    arm_label=self.actions[-1],
+                    reward=reward,
+                    q_values=q_values
+                )
             self.update_live_main_plot(i)
-            self.update_live_arm_plots()
+            self.update_live_arm_plots(i)
+            self.update_live_arm_plots_for_each(i)
+
+
+            if i == 200 or i == n_trials - 1:
+                plt.ioff()
+                print(f"Iteration {i}: All diagrams frozen. Close windows to exit.")
+                plt.show(block=True)
             
         
             # halfway checkpoint
@@ -249,7 +273,7 @@ class Experiment:
         plt.ion()
 
         # Get all channels from environment (needed for consistent bar colors)
-        all_arms = self.env.devices#all_arms = self.env.channels
+        all_arms = self.env.channels
         colors = plt.cm.get_cmap('Dark2', len(all_arms))
 
         # --- GET ESTIMATED Q-VALUES FOR DYNAMIC SUBTITLE ---
@@ -258,14 +282,14 @@ class Experiment:
         
         # Find the index (channel number) of the maximum Q-value
         # Use np.argmax to find the index of the best channel
-        best_device_index = np.argmax(current_q_values)#best_channel_index = np.argmax(current_q_values)
-        best_value = current_q_values[best_device_index]#best_value = current_q_values[best_channel_index]
+        best_channel_index = np.argmax(current_q_values) #best_device_index = np.argmax(current_q_values) 
+        best_value = current_q_values[best_channel_index]#best_value = current_q_values[best_device_index]
         # Assuming channel names are what's in all_arms, which corresponds to the index
         # Note: If all_arms is a list of channel identifiers, use all_arms[best_channel_index]
-        best_device_name = all_arms[best_device_index]#best_channel_name = all_arms[best_channel_index]
+        best_channel_name = all_arms[best_channel_index]#best_device_name = all_arms[best_device_index]
         
         # Create the dynamic text string
-        dynamic_subtitle = f""
+        dynamic_subtitle = f"Best Estimated {entity_singular}: {best_channel_name} (Value: {best_value:.2f})"
         # --------------------------------------------------
         
         if self.live_fig is None:
@@ -374,6 +398,7 @@ class Experiment:
 
         if iteration == 0:
             self.best_channel_text.set_text(f"Best Estimated {entity_singular}: None")
+
         else:
             self.best_channel_text.set_text(dynamic_subtitle)
 
@@ -383,96 +408,162 @@ class Experiment:
         plt.style.use('default')
 
        
-    def update_live_arm_plots(self):
-        # 1. Apply a modern style
-        plt.style.use('ggplot') # Use a clean, stylish theme for better aesthetics
+    def update_live_arm_plots(self, iteration):
+        plt.style.use('ggplot')
         plt.ion()
 
-        # Get all channels from environment
-        all_arms = self.env.devices#all_arms = self.env.channels
+        all_arms = self.env.channels
         
-        # Create the figure once with all arms
+        # --- TRACKING THE LEARNING CURVE ---
+        if not hasattr(self, 'q_value_history_per_arm'):
+            self.q_value_history_per_arm = {arm: [] for arm in all_arms}
+            self.step_history_per_arm = {arm: [] for arm in all_arms}
+
+        if len(self.actions) > 0:
+            last_action = self.actions[-1]
+            current_estimates = self.agent.get_estimated_values()
+            action_idx = all_arms.index(last_action)
+            
+            # Capture the actual estimate at this specific moment
+            self.q_value_history_per_arm[last_action].append(current_estimates[action_idx])
+            self.step_history_per_arm[last_action].append(len(self.actions))
+
         if self.arm_fig is None:
             n_arms = len(all_arms)
-            # Make the figure larger/taller for better visual separation
-            self.arm_fig, axs = plt.subplots(n_arms, 1, figsize=(12, 5 * n_arms), sharex=True) 
-            if n_arms == 1:
-                axs = [axs]
-            
-            self.arm_axes = {}
-            for idx, ax in enumerate(axs):
-                self.arm_axes[all_arms[idx]] = ax
-            
-            self.arm_fig.suptitle("Live Average Reward per Arm", 
-                                  fontsize=18, fontweight='bold', color='#444444')
+            # Increase height significantly to prevent squashing
+            self.arm_fig, axs = plt.subplots(n_arms, 1, figsize=(12, 5 * n_arms)) 
+            self.arm_axes = axs if n_arms > 1 else [axs]
+            self.arm_fig.suptitle("Live Agent Q-Value Estimates", fontsize=20, fontweight='bold')
 
-        # Get a list of distinct colors for the lines
         colors = plt.cm.get_cmap('Dark2', len(all_arms)) 
 
-        # Update each arm's plot
-        for idx, (arm, ax) in enumerate(self.arm_axes.items()):
-            cumulative = 0
-            count = 0
-            avg_vals = []
-            steps = []
-
-            # Data calculation remains the same
-            for t, (a, r) in enumerate(zip(self.actions, self.rewards), start=1):
-                if a == arm:
-                    count += 1
-                    cumulative += r
-                    avg_vals.append(cumulative / count)
-                    steps.append(t)
-
-            # --- DEBUG line removed for final elegant code ---
-            # print(f"Plotting for Arm (Channel Value) {arm}: Steps: {steps}, Avg Values: {avg_vals}")
-            # --------------------------------------------------
+        for idx, ax in enumerate(self.arm_axes):
+            arm_identity = all_arms[idx]
+            steps = self.step_history_per_arm[arm_identity]
+            q_vals = self.q_value_history_per_arm[arm_identity]
 
             ax.clear()
             
-            if steps:
-                # 2. Use a unique color, thicker line, and semi-transparent fill
+            if len(steps) > 1:
                 color = colors(idx)
-                ax.plot(steps, avg_vals, 
-                        label=f"Avg Reward (N={count})",
-                        color=color, 
-                        linewidth=3, # Thicker line
-                        marker='o', 
-                        markersize=6, 
-                        markeredgecolor='black', # Differentiate marker edge
-                        markeredgewidth=0.5
-                ) 
+                ax.plot(steps, q_vals, color=color, linewidth=3, marker='o', markersize=6)
+                ax.fill_between(steps, q_vals, color=color, alpha=0.1)
+
+                # --- THE "ZOOM" FIX: LOGARITHMIC OR WINDOWED SCALING ---
+                # We ignore the first few points if they are outliers (the 300+ values)
+                # to focus on the stabilized values (the 15-40 range)
+                focus_data = q_vals[int(len(q_vals)*0.2):] if len(q_vals) > 5 else q_vals
                 
-                # Optional: Add a subtle fill below the line
-                ax.fill_between(steps, avg_vals, color=color, alpha=0.1) 
+                v_min, v_max = min(focus_data), max(focus_data)
+                # Add a tiny 10% margin
+                margin = (v_max - v_min) * 0.1 if v_max != v_min else 1.0
                 
-                # 3. Add a final value marker for quick reading
-                ax.axhline(avg_vals[-1], color='gray', linestyle='--', linewidth=1, alpha=0.6)
-                ax.text(steps[-1] + 0.5, avg_vals[-1], f'{avg_vals[-1]:.2f}', 
-                        color='black', fontsize=10, verticalalignment='center', fontweight='bold')
-                
-            else:
-                ax.text(0.5, 0.5, 'Not yet selected', 
-                    ha='center', va='center', transform=ax.transAxes,
-                    fontsize=12, color='darkred', style='italic') # Use a more noticeable color
-                
-            # 4. Refined titles and labels
-            ax.set_title(f"Channel {arm}", loc='left', fontsize=14, fontweight='bold')
-            ax.set_ylabel("Avg Reward", fontsize=12)
-            ax.grid(True, linestyle='-', alpha=0.4) # Slightly darker grid
+                # FORCE the axis to stay within the 'learned' range
+                ax.set_ylim(v_min - margin, v_max + margin)
+
+                # Final value label
+                ax.annotate(f'Final: {q_vals[-1]:.2f}', xy=(steps[-1], q_vals[-1]), 
+                            xytext=(10, 0), textcoords='offset points',
+                            bbox=dict(boxstyle='round', fc='white', ec=color, alpha=0.8),
+                            fontweight='bold')
             
-            # Remove top and right spines (box lines) for a cleaner look
-            ax.spines['right'].set_visible(False)
-            ax.spines['top'].set_visible(False)
+            elif len(steps) == 1:
+                # Single point case
+                ax.scatter(steps, q_vals, color=colors(idx), s=100)
+                ax.text(steps[0], q_vals[0], f'Initial: {q_vals[0]:.2f}')
+            else:
+                ax.text(0.5, 0.5, 'ARM NOT YET SAMPLED', ha='center', va='center', 
+                        transform=ax.transAxes, color='gray', fontsize=12)
 
+            ax.set_title(f"Channel {arm_identity}", loc='left', fontsize=15, fontweight='bold')
+            ax.set_ylabel("Estimate")
+            ax.grid(True, linestyle=':', alpha=0.6)
 
-        # 5. Final Layout adjustments
-        list(self.arm_axes.values())[-1].set_xlabel("Step (Iteration)", fontsize=14)
-        self.arm_fig.tight_layout(rect=[0, 0, 1, 0.96])
+        self.arm_axes[-1].set_xlabel("Iterations")
+        self.arm_fig.tight_layout(rect=[0, 0, 1, 0.95])
         
         self.arm_fig.canvas.draw()
         self.arm_fig.canvas.flush_events()
-        # Restore default style after drawing to avoid affecting other plots
+
         plt.style.use('default')
 
-  
+
+    def update_live_arm_plots_for_each(self, iteration):
+        plt.style.use('ggplot')
+        plt.ion()
+
+        all_arms = self.env.channels
+        
+        # --- FIX: INITIALIZE THE DICTIONARIES IF THEY DON'T EXIST ---
+        if not hasattr(self, 'individual_figs'):
+            self.individual_figs = {}
+        if not hasattr(self, 'individual_axes'):
+            self.individual_axes = {}
+
+        # --- TRACKING THE LEARNING CURVE ---
+        if not hasattr(self, 'q_value_history_per_arm'):
+            self.q_value_history_per_arm = {arm: [] for arm in all_arms}
+            self.step_history_per_arm = {arm: [] for arm in all_arms}
+
+        if len(self.actions) > 0:
+            last_action = self.actions[-1]
+            current_estimates = self.agent.get_estimated_values()
+            action_idx = all_arms.index(last_action)
+            
+            # Capture the actual estimate at this specific moment
+            self.q_value_history_per_arm[last_action].append(current_estimates[action_idx])
+            self.step_history_per_arm[last_action].append(len(self.actions))
+
+        colors = plt.cm.get_cmap('Dark2', len(all_arms)) 
+
+        for idx, arm_identity in enumerate(all_arms):
+            # Create a separate window for this arm if it doesn't exist
+            if arm_identity not in self.individual_figs:
+                # Each call here creates a brand new independent window
+                fig, ax = plt.subplots(figsize=(10, 6))
+                fig.canvas.manager.set_window_title(f"Channel {arm_identity} - Live Estimate")
+                self.individual_figs[arm_identity] = fig
+                self.individual_axes[arm_identity] = ax
+
+            ax = self.individual_axes[arm_identity]
+            fig = self.individual_figs[arm_identity]
+            
+            steps = self.step_history_per_arm[arm_identity]
+            q_vals = self.q_value_history_per_arm[arm_identity]
+
+            ax.clear()
+            
+            if len(steps) > 1:
+                color = colors(idx)
+                ax.plot(steps, q_vals, color=color, linewidth=3, marker='o', markersize=6)
+                ax.fill_between(steps, q_vals, color=color, alpha=0.1)
+
+                # --- YOUR "ZOOM" FIX LOGIC ---
+                focus_data = q_vals[int(len(q_vals)*0.2):] if len(q_vals) > 5 else q_vals
+                v_min, v_max = min(focus_data), max(focus_data)
+                margin = (v_max - v_min) * 0.1 if v_max != v_min else 1.0
+                ax.set_ylim(v_min - margin, v_max + margin)
+
+                # Final value label
+                ax.annotate(f'Final: {q_vals[-1]:.2f}', xy=(steps[-1], q_vals[-1]), 
+                            xytext=(10, 0), textcoords='offset points',
+                            bbox=dict(boxstyle='round', fc='white', ec=color, alpha=0.8),
+                            fontweight='bold')
+            
+            elif len(steps) == 1:
+                ax.scatter(steps, q_vals, color=colors(idx), s=100)
+                ax.text(steps[0], q_vals[0], f'Initial: {q_vals[0]:.2f}')
+            else:
+                ax.text(0.5, 0.5, 'ARM NOT YET SAMPLED', ha='center', va='center', 
+                        transform=ax.transAxes, color='gray', fontsize=12)
+
+            ax.set_title(f"Channel {arm_identity}", loc='left', fontsize=15, fontweight='bold')
+            ax.set_ylabel("Estimate")
+            ax.set_xlabel("Iterations")
+            ax.grid(True, linestyle=':', alpha=0.6)
+
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+
+        # --- FREEZE AT 100 ---
+        plt.style.use('default')
