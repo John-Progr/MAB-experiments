@@ -311,7 +311,7 @@ class Experiment:
             # --- UPDATE SUBTITLE ---
             # If the figure already exists, just update the text object's content
             # self.best_channel_text.set_text(dynamic_subtitle)
-            print("kwlos")
+            print("")
 
         steps = np.arange(1, len(self.rewards)+ 1)
         avg_reward = np.cumsum(self.rewards) / steps
