@@ -106,7 +106,7 @@ class WirelessChannelEnv:
 
 class WirelessRouteEnv:
 
-    def __init__(self, source_ip, dest_ip,devices, reward_endpoint, reward_machine):
+    def __init__(self, source_ip, dest_ip,devices, reward_endpoint, reward_machine, channel):
 
         """
         Request to a testbed as a service environment to get throughput (our reward)
@@ -123,6 +123,7 @@ class WirelessRouteEnv:
         self.devices = devices
         self.reward_endpoint = reward_endpoint
         self.reward_machine = reward_machine
+        self.channel = channel
         #self.reward_url = reward_url  # store the private URL
         """
         if self.reward_machine == 3 and self.reward_url:
@@ -134,12 +135,12 @@ class WirelessRouteEnv:
                 raise RuntimeError(f"Failed to load reward data: {e}")
        """
 
-    def send_request(self, device, channel):
+    def send_request(self, device):
         request_data = {
             "source": self.source_ip,
             "destination": self.dest_ip,
-            "path": [device],
-            "wireless_channel": channel
+            "path": [f"192.168.2.{device}"],
+            "wireless_channel": self.channel
         }
 
 
@@ -170,17 +171,17 @@ class WirelessRouteEnv:
 
     
 
-    def get_reward(self, channel):
+    def get_reward(self, device):
         """
         Fetch reward for a given channel, either via API or simulation
 
         """
         if self.reward_machine == 0:
-            json_response = self.send_request(channel)
+            json_response = self.send_request(device)
             print(json_response)
                 
             if json_response is None or "rate_mbps" not in json_response or json_response["rate_mbps"] is None:
-                    reward = 18
+                    reward = -100000
             else:
                 reward = json_response["rate_mbps"]
             return reward

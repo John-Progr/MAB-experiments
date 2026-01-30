@@ -5,14 +5,14 @@ class EpsilonGreedy:
 
     
     def __init__(self, n_arms, epsilon, update_rule, alpha):
-        self.n_arms = n_arms
+        self.n_arms = n_arms 
         self.epsilon = epsilon
         self.update_rule = update_rule
         self.alpha = alpha
         self.counts = np.zeros(n_arms)   # Number of times each arm is pulled, basically how often each channel is used 
-        self.values = np.full(n_arms, 1000)
+        self.values = np.full(n_arms, 500)
         #self.values = np.zeros(n_arms) # Estimated values of each arm, basically estimated throughput per channel
-        np.random.seed(46)  # fixed seed
+        #np.random.seed()  # fixed seed
 
 
 
